@@ -1452,15 +1452,22 @@ export default class ConnectionsDetail extends Vue {
   }
 
   // Push messages to the list
-  private batchUpdateMsgs(incomingMsgs: MessageModel[]) {
+  private async batchUpdateMsgs(incomingMsgs: MessageModel[]) {
     let _messages = _.cloneDeep(this.recordMsgs.list)
-    incomingMsgs.forEach((msg: MessageModel) => {
+    for (const msg of incomingMsgs) {
       const isActiveTopicMessages = matchTopicMethod(this.activeTopic, msg.topic)
       const isActiveMsgType = this.isMessageTypeActive(msg)
       if (isActiveMsgType && (!this.activeTopic || isActiveTopicMessages)) {
-        _messages.push(msg)
+        if (this.searchParams.topic !== '' || this.searchParams.payload !== '') {
+          const isMatch = await this.searchMessage(msg)
+          if (isMatch) {
+            _messages.push(msg)
+          }
+        } else {
+          _messages.push(msg)
+        }
       }
-    })
+    }
     if (_messages.length > MAX_MESSAGES_COUNT) {
       _messages = _messages.slice(_messages.length - MAX_MESSAGES_COUNT)
     }
@@ -1468,7 +1475,11 @@ export default class ConnectionsDetail extends Vue {
   }
 
   // Render message
-  private renderMessage(id: string, msgs: MessageModel | MessageModel[], msgType: 'received' | 'publish' = 'received') {
+  private async renderMessage(
+    id: string,
+    msgs: MessageModel | MessageModel[],
+    msgType: 'received' | 'publish' = 'received',
+  ) {
     try {
       const isScrollBottom = this.isScrollBottom()
       // Convert single message to array if needed
@@ -1503,7 +1514,7 @@ export default class ConnectionsDetail extends Vue {
         return
       }
       this.newMsgsCount = 0
-      this.batchUpdateMsgs(msgs)
+      await this.batchUpdateMsgs(msgs)
       this.scrollToBottom()
     } catch (error) {
       this.$log.error((error as Error).toString())
@@ -1563,13 +1574,13 @@ export default class ConnectionsDetail extends Vue {
     })
 
     // Handle message rendering with dynamic buffering
-    messageSubject$.subscribe((message) => {
+    messageSubject$.subscribe(async (message) => {
       if (!message) return
       this.printMessageLog(id, message)
       if (isBufferEnabled) {
         messageBuffer$.next(message)
       } else {
-        this.renderMessage(id, message)
+        await this.renderMessage(id, message)
       }
     })
 
@@ -1579,9 +1590,9 @@ export default class ConnectionsDetail extends Vue {
         bufferTime(MESSAGES_BUFFER_TIME),
         filter((messages) => messages.length > 0),
       )
-      .subscribe((messages) => {
+      .subscribe(async (messages) => {
         if (messages.length) {
-          this.renderMessage(id, messages)
+          await this.renderMessage(id, messages)
         }
       })
   }
